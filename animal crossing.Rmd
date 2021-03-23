@@ -1,0 +1,263 @@
+---
+title: "Animal crossing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+critic <- readr::read_tsv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-05-05/critic.tsv')
+user_reviews <- readr::read_tsv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-05-05/user_reviews.tsv')
+items <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-05-05/items.csv')
+villagers <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-05-05/villagers.csv')
+
+tuesdata <- tidytuesdayR::tt_load('2020-05-05')
+tuesdata <- tidytuesdayR::tt_load(2020, week = 19)
+
+
+critic <- tuesdata$critic
+
+
+library(tidyverse)
+
+villagers
+items %>% 
+
+
+### Text Analysis
+
+critic %>% 
+ggplot(aes(grade)) +
+geom_histogram()
+
+user_reviews %>% 
+ggplot(aes(grade)) +
+geom_histogram()
+
+head(user_reviews$text)
+
+
+
+library(tidytext)
+library(lubridate)
+
+user_reviews %>% 
+group_by(week = floor_date(date, "week")) %>% 
+ summarize(nb_reviews = n(),
+avg_grade = mean(grade))
+
+
+user_review_words <- user_reviews %>% 
+unnest_tokens(word, text) %>% 
+anti_join(stop_words, by = "word") %>% 
+count(user_name, date, grade, word)
+
+user_review_words %>% 
+group_by(word) %>% 
+summarize(avg_grade = mean(grade),
+nb_reviews = n()) %>% 
+arrange(desc(nb_reviews)) %>% 
+filter(nb_reviews >= 50) %>% 
+arrange(desc(avg_grade))
+
+summarized <- user_reviews %>% 
+group_by(week = floor_date(date, "week", week_start =1)) %>% 
+ summarize(nb_reviews = n(),
+avg_grade = mean(grade),
+pct_zero = mean(grade == 0),
+pct_ten = mean(grade == 10))
+
+by_week %>% 
+filter(nb_reviews >= 20) %>% 
+ggplot(aes(week, avg_grade)) +
+geom_line() +
+geom_point(aes(size = nb_reviews)) +
+expand_limits(y = 0) +
+labs(x = "Time",
+y = "Average grade",
+size = "# of reviews")
+
+user_reviews %>% 
+ggplot(aes(grade)) + 
+geom_histogram() +
+labs(titles = "most reviews were very low or very high")
+
+by_week %>% 
+gather(type, value, contains("pct")) %>% 
+mutate(type = ifelse(type == "pct_zero", "% rated 0", "% rated 10")) %>% 
+ggplot(aes(week, value, color = type)) +
+geom_line() +
+geom_point(aes(size = nb_reviews)) +
+geom_vline(xintercept = as.Date(c("2020-04-01", "2020-04-12")), lty = 2) +
+scale_y_continuous(labels = scales::percent) +
+expand_limits(y = 0) +
+labs(x = "Time",
+  y = "% of reviews",
+  size = "total reviews in week",
+  title = "reviews got more polarizing in middle of game")
+
+
+by_word <- user_review_words %>% 
+group_by(word) %>% 
+summarize(avg_grade = mean(grade),
+nb_reviews = n()) %>% 
+arrange(desc(nb_reviews)) %>% 
+filter(nb_reviews >= 25) %>% 
+arrange(desc(avg_grade)) 
+
+by_word %>% 
+ggplot(aes(nb_reviews, avg_grade)) +
+geom_point() +
+geom_text(aes(label = word), vjust = 1, hjust = 1, check_overlap = TRUE) +
+scale_x_log10()
+
+by_word %>% 
+filter(nb_reviews >= 75) %>%
+top_n(20, -avg_grade) %>% 
+ggplot(aes(nb_reviews, avg_grade)) +
+geom_point() +
+geom_text(aes(label = word), vjust = 1, hjust = 1, check_overlap = TRUE) +
+scale_x_log10() +
+labs(title = "What words were associated with low-grade reviews?",
+subtitle = "20 most negative words; only words in at least 25 reviews")
+
+library(widyr)
+library(stm)
+
+review_matrix <- user_review_words %>% 
+group_by(word) %>% 
+filter(n() >= 25) %>% 
+cast_sparse(user_name, word, n)
+
+review_matrix
+
+topic_model <- stm(review_matrix,
+                  K = 4, verbose = TRUE, init.type = "Spectral")
+
+tidy(topic_model) %>% 
+group_by(topic) %>% 
+top_n(12, beta) %>% 
+mutate(term = reorder_within(term, beta, topic)) %>% 
+ggplot(aes(beta, term)) +
+geom_col() +
+scale_y_reordered() +
+facet_wrap(~ topic, scales = "free_y")
+
+topic_model_6 <- stm(review_matrix,
+                  K = 6, verbose = TRUE,
+                  init.type = "Spectral",
+                  emtol = 5e-5)
+
+topic_model_gamma <- tidy(topic_model_6, matrix = "gamma) %>% 
+mutate(user_name = rownames(review_matrix)[document])
+
+topic_model_gamma %>% 
+group_by(topic) %>% 
+top_n(1, gamma) %>% 
+
+
+topic_model_gamma %>% 
+ group_by(topic) %>% 
+ summarize(correlation = cor(gamma, grade),
+ spearman_corrlation = cor(gamma, grade, method = "spearman"))
+
+topic_model_gamma %>% 
+grouop_by(week = floor_date(date, "week", week_start = 1), 
+topic) %>% 
+summarize(avg_gamme = mean(gamma)) %>% 
+ggplot(aes(week, avg_gamma, color = factor(topic))) +
+gom_line() +
+expand_limits(y = 0) +
+labs(x = "Time",
+      y = "Average gamme")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
